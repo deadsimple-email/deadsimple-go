@@ -160,6 +160,9 @@ type Webhook struct {
 	LastTriggeredAt string   `json:"last_triggered_at,omitempty"`
 	FailureCount    int      `json:"failure_count"`
 	SigningSecret   string   `json:"signing_secret,omitempty"`
+	// Headers are the custom delivery headers. Values are masked by the API
+	// (write-only).
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // WebhookList is a list of webhooks.

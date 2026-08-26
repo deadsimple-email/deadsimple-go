@@ -244,10 +244,15 @@ func (s *ThreadService) GetAttachments(ctx context.Context, inboxID, threadID st
 type WebhookService struct{ c *Client }
 
 type CreateWebhookParams struct {
-	URL            string   `json:"url"`
-	Events         []string `json:"events"`
-	Description    string   `json:"description,omitempty"`
-	IdempotencyKey string   `json:"-"`
+	URL         string   `json:"url"`
+	Events      []string `json:"events"`
+	Description string   `json:"description,omitempty"`
+	// Headers are sent on every delivery attempt (and every retry), for
+	// endpoints that require their own auth, e.g.
+	// map[string]string{"Authorization": "Bearer ..."}. Values are write-only:
+	// the API masks them in every response.
+	Headers        map[string]string `json:"headers,omitempty"`
+	IdempotencyKey string            `json:"-"`
 }
 
 func (s *WebhookService) Create(ctx context.Context, p *CreateWebhookParams) (*Webhook, error) {
@@ -273,6 +278,41 @@ func (s *WebhookService) List(ctx context.Context) (*WebhookList, error) {
 func (s *WebhookService) Delete(ctx context.Context, webhookID string) error {
 	_, err := s.c.do(ctx, "DELETE", fmt.Sprintf("/v1/webhooks/%s", webhookID), nil, nil, "")
 	return err
+}
+
+type webhookHeaders struct {
+	Headers map[string]string `json:"headers"`
+}
+
+// GetHeaders returns the custom delivery header names for a webhook, with
+// values masked.
+func (s *WebhookService) GetHeaders(ctx context.Context, webhookID string) (map[string]string, error) {
+	data, err := s.c.do(ctx, "GET", fmt.Sprintf("/v1/webhooks/%s/headers", webhookID), nil, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	resp, err := decodeJSON[webhookHeaders](data)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Headers, nil
+}
+
+// SetHeaders replaces a webhook's custom delivery headers. Pass an empty map to
+// clear them.
+func (s *WebhookService) SetHeaders(ctx context.Context, webhookID string, headers map[string]string) (map[string]string, error) {
+	if headers == nil {
+		headers = map[string]string{}
+	}
+	data, err := s.c.do(ctx, "PUT", fmt.Sprintf("/v1/webhooks/%s/headers", webhookID), webhookHeaders{Headers: headers}, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	resp, err := decodeJSON[webhookHeaders](data)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Headers, nil
 }
 
 // ── Domains ─────────────────────────────────────────────────────────────────

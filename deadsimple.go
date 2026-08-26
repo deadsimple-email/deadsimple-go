@@ -28,7 +28,7 @@ import (
 
 const (
 	DefaultBaseURL = "https://api.deadsimple.email"
-	Version        = "0.1.0"
+	Version        = "0.2.0"
 )
 
 // Client is the Dead Simple Email API client.

@@ -90,6 +90,27 @@ Pass `0` for the default 300-second replay tolerance.
 Handlers must be idempotent: deliveries are retried on non-2xx or timeout, so the
 same event can legitimately arrive more than once. Key on `message_id`.
 
+## Custom delivery headers
+
+If your endpoint enforces its own auth, register the headers it requires. They
+are sent on every delivery attempt and every retry.
+
+```go
+wh, err := client.Webhooks.Create(ctx, &deadsimple.CreateWebhookParams{
+	URL:     "https://your-app.com/webhook",
+	Events:  []string{"message.received"},
+	Headers: map[string]string{"Authorization": "Bearer your-endpoint-token"},
+})
+
+// Rotate later without recreating the webhook (which would change its secret).
+_, err = client.Webhooks.SetHeaders(ctx, wh.WebhookID,
+	map[string]string{"Authorization": "Bearer rotated"})
+```
+
+Values are write-only: `GetHeaders` and every other response returns them masked.
+Up to 10 headers, 1024 characters per value, printable ASCII. `Content-Type`,
+`Host`, `User-Agent`, hop-by-hop headers and `X-DSE-*` are reserved.
+
 ## Options
 
 ```go

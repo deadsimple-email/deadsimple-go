@@ -28,7 +28,7 @@ import (
 
 const (
 	DefaultBaseURL = "https://api.deadsimple.email"
-	Version        = "0.2.0"
+	Version        = "0.3.0"
 )
 
 // Client is the Dead Simple Email API client.
@@ -51,6 +51,7 @@ type Client struct {
 	Contacts     *ContactService
 	Suppressions *SuppressionService
 	Events       *EventService
+	Attachments  *AttachmentService
 }
 
 // Option configures the client.
@@ -95,6 +96,7 @@ func New(apiKey string, opts ...Option) *Client {
 	c.Contacts = &ContactService{c: c}
 	c.Suppressions = &SuppressionService{c: c}
 	c.Events = &EventService{c: c}
+	c.Attachments = &AttachmentService{c: c}
 	return c
 }
 

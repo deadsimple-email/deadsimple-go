@@ -1,10 +1,17 @@
 package deadsimple
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"mime"
+	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // ── Inboxes ─────────────────────────────────────────────────────────────────
@@ -91,19 +98,32 @@ func (s *InboxService) BulkCreate(ctx context.Context, inboxes []CreateInboxPara
 
 type MessageService struct{ c *Client }
 
+// OutboundAttachment is a file to send. Set AttachmentID (from
+// Attachments.Upload) for anything of real size; Data is only workable for
+// small files because the send request itself is size-limited. Inline renders
+// an image in the body rather than attaching it as a download.
+type OutboundAttachment struct {
+	AttachmentID string `json:"attachment_id,omitempty"`
+	Filename     string `json:"filename,omitempty"`
+	ContentType  string `json:"content_type,omitempty"`
+	Data         string `json:"data,omitempty"` // base64
+	Inline       bool   `json:"inline,omitempty"`
+}
+
 type SendMessageParams struct {
-	To             []string          `json:"to"`
-	Subject        string            `json:"subject"`
-	TextBody       string            `json:"text_body,omitempty"`
-	HTMLBody       string            `json:"html_body,omitempty"`
-	CC             []string          `json:"cc,omitempty"`
-	BCC            []string          `json:"bcc,omitempty"`
-	ReplyTo        string            `json:"reply_to,omitempty"`
-	Headers        map[string]string `json:"headers,omitempty"`
-	SendAt         string            `json:"send_at,omitempty"`
-	TemplateID     string            `json:"template_id,omitempty"`
-	Variables      map[string]string `json:"variables,omitempty"`
-	IdempotencyKey string            `json:"-"`
+	To             []string             `json:"to"`
+	Subject        string               `json:"subject"`
+	TextBody       string               `json:"text_body,omitempty"`
+	HTMLBody       string               `json:"html_body,omitempty"`
+	CC             []string             `json:"cc,omitempty"`
+	BCC            []string             `json:"bcc,omitempty"`
+	ReplyTo        string               `json:"reply_to,omitempty"`
+	Headers        map[string]string    `json:"headers,omitempty"`
+	SendAt         string               `json:"send_at,omitempty"`
+	TemplateID     string               `json:"template_id,omitempty"`
+	Variables      map[string]string    `json:"variables,omitempty"`
+	Attachments    []OutboundAttachment `json:"attachments,omitempty"`
+	IdempotencyKey string               `json:"-"`
 }
 
 func (s *MessageService) Send(ctx context.Context, inboxID string, p *SendMessageParams) (*SendResult, error) {
@@ -177,14 +197,16 @@ func (s *MessageService) ReplyAll(ctx context.Context, inboxID, messageID string
 }
 
 type ReplyParams struct {
-	TextBody string `json:"text_body,omitempty"`
-	HTMLBody string `json:"html_body,omitempty"`
+	TextBody    string               `json:"text_body,omitempty"`
+	HTMLBody    string               `json:"html_body,omitempty"`
+	Attachments []OutboundAttachment `json:"attachments,omitempty"`
 }
 
 type ForwardParams struct {
-	To       []string `json:"to"`
-	TextBody string   `json:"text_body,omitempty"`
-	HTMLBody string   `json:"html_body,omitempty"`
+	To          []string             `json:"to"`
+	TextBody    string               `json:"text_body,omitempty"`
+	HTMLBody    string               `json:"html_body,omitempty"`
+	Attachments []OutboundAttachment `json:"attachments,omitempty"`
 }
 
 func (s *MessageService) Forward(ctx context.Context, inboxID, messageID string, p *ForwardParams) (*SendResult, error) {
@@ -313,6 +335,69 @@ func (s *WebhookService) SetHeaders(ctx context.Context, webhookID string, heade
 		return nil, err
 	}
 	return resp.Headers, nil
+}
+
+// AttachmentService uploads outbound files.
+type AttachmentService struct{ c *Client }
+
+// Upload stages a file and returns a reference usable on any message.
+// The bytes go straight to storage rather than through the send request, which
+// is what allows real photos: a send call cannot carry more than a few MB.
+func (s *AttachmentService) Upload(ctx context.Context, filename, contentType string, data []byte) (*OutboundAttachment, error) {
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	staged, err := s.c.do(ctx, "POST", "/v1/attachments", map[string]any{
+		"filename": filename, "content_type": contentType, "size": len(data),
+	}, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	var upload struct {
+		AttachmentID string `json:"attachment_id"`
+		UploadURL    string `json:"upload_url"`
+	}
+	if err := json.Unmarshal(staged, &upload); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, upload.UploadURL, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	resp, err := s.c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("attachment upload failed: %s", resp.Status)
+	}
+	return &OutboundAttachment{AttachmentID: upload.AttachmentID}, nil
+}
+
+// Inline marks an attachment to render in the message body rather than arrive
+// as a download. Chainable: client.Attachments.UploadFile(ctx, p) then .Inline().
+func (a *OutboundAttachment) AsInline() *OutboundAttachment {
+	a.Inline = true
+	return a
+}
+
+// UploadFile is Upload for a file on disk.
+func (s *AttachmentService) UploadFile(ctx context.Context, path string) (*OutboundAttachment, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return s.Upload(ctx, filepath.Base(path), contentTypeFor(path), data)
+}
+
+func contentTypeFor(path string) string {
+	if ct := mime.TypeByExtension(filepath.Ext(path)); ct != "" {
+		return strings.SplitN(ct, ";", 2)[0]
+	}
+	return "application/octet-stream"
 }
 
 // ── Domains ─────────────────────────────────────────────────────────────────

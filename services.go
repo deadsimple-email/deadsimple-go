@@ -146,8 +146,11 @@ type ListMessagesParams struct {
 	Q         string
 	Direction string
 	From      string
-	Limit     int
-	Cursor    string
+	// Labels narrows to messages carrying every label given, e.g.
+	// []string{"state:unreplied"}.
+	Labels []string
+	Limit  int
+	Cursor string
 }
 
 func (s *MessageService) List(ctx context.Context, inboxID string, p *ListMessagesParams) (*MessageList, error) {
@@ -161,6 +164,9 @@ func (s *MessageService) List(ctx context.Context, inboxID string, p *ListMessag
 		}
 		if p.From != "" {
 			params.Set("from", p.From)
+		}
+		if len(p.Labels) > 0 {
+			params.Set("labels", strings.Join(p.Labels, ","))
 		}
 		if p.Limit > 0 {
 			params.Set("limit", strconv.Itoa(p.Limit))
@@ -206,11 +212,13 @@ func (s *MessageService) ReplyAll(ctx context.Context, inboxID, messageID string
 // reaches the right people instead of looping back to you. To overrides that;
 // CC and BCC add addresses, which is how a standing CC rides every reply.
 type ReplyParams struct {
-	TextBody    string               `json:"text_body,omitempty"`
-	HTMLBody    string               `json:"html_body,omitempty"`
-	To          []string             `json:"to,omitempty"`
-	CC          []string             `json:"cc,omitempty"`
-	BCC         []string             `json:"bcc,omitempty"`
+	TextBody string   `json:"text_body,omitempty"`
+	HTMLBody string   `json:"html_body,omitempty"`
+	To       []string `json:"to,omitempty"`
+	CC       []string `json:"cc,omitempty"`
+	BCC      []string `json:"bcc,omitempty"`
+	// SendAt schedules the reply (ISO 8601) instead of sending it now.
+	SendAt      string               `json:"send_at,omitempty"`
 	Attachments []OutboundAttachment `json:"attachments,omitempty"`
 }
 

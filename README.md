@@ -59,6 +59,28 @@ func main() {
 `client.Workspaces`, `client.Contacts`, `client.Suppressions`, `client.Events`,
 `client.Usage`.
 
+## Replying
+
+Recipients default to the other side of the conversation. For a message you
+received that is the sender; for one you sent it is the original recipients, so
+following up on your own unanswered email reaches the people it was addressed
+to rather than looping back to you.
+
+```go
+_, err := client.Messages.Reply(ctx, inboxID, messageID, &deadsimple.ReplyParams{
+	TextBody: "Following up on the quote.",
+	CC:       []string{"records@client.example"},
+})
+```
+
+`To` overrides the default recipients; `CC` and `BCC` add addresses, which is how
+a standing CC rides every reply. `ReplyAll` takes the same params and adds `CC`
+to the original participants rather than replacing them.
+
+Threading headers are set for you. If you need a reply that also carries its own
+recipient list, `Send` takes `InReplyTo`, which accepts either a `MessageID` from
+the inbox or a raw Message-ID header.
+
 ## Verifying webhooks
 
 Every delivery is signed with HMAC-SHA256 over `"<timestamp>.<raw_body>"` using the

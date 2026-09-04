@@ -111,19 +111,23 @@ type OutboundAttachment struct {
 }
 
 type SendMessageParams struct {
-	To             []string             `json:"to"`
-	Subject        string               `json:"subject"`
-	TextBody       string               `json:"text_body,omitempty"`
-	HTMLBody       string               `json:"html_body,omitempty"`
-	CC             []string             `json:"cc,omitempty"`
-	BCC            []string             `json:"bcc,omitempty"`
-	ReplyTo        string               `json:"reply_to,omitempty"`
-	Headers        map[string]string    `json:"headers,omitempty"`
-	SendAt         string               `json:"send_at,omitempty"`
-	TemplateID     string               `json:"template_id,omitempty"`
-	Variables      map[string]string    `json:"variables,omitempty"`
-	Attachments    []OutboundAttachment `json:"attachments,omitempty"`
-	IdempotencyKey string               `json:"-"`
+	To          []string             `json:"to"`
+	Subject     string               `json:"subject"`
+	TextBody    string               `json:"text_body,omitempty"`
+	HTMLBody    string               `json:"html_body,omitempty"`
+	CC          []string             `json:"cc,omitempty"`
+	BCC         []string             `json:"bcc,omitempty"`
+	ReplyTo     string               `json:"reply_to,omitempty"`
+	Headers     map[string]string    `json:"headers,omitempty"`
+	SendAt      string               `json:"send_at,omitempty"`
+	TemplateID  string               `json:"template_id,omitempty"`
+	Variables   map[string]string    `json:"variables,omitempty"`
+	Attachments []OutboundAttachment `json:"attachments,omitempty"`
+	// InReplyTo threads this send onto an existing conversation. Takes a
+	// MessageID from this inbox or a raw Message-ID header.
+	InReplyTo      string   `json:"in_reply_to,omitempty"`
+	References     []string `json:"references,omitempty"`
+	IdempotencyKey string   `json:"-"`
 }
 
 func (s *MessageService) Send(ctx context.Context, inboxID string, p *SendMessageParams) (*SendResult, error) {
@@ -196,9 +200,17 @@ func (s *MessageService) ReplyAll(ctx context.Context, inboxID, messageID string
 	return decodeJSON[SendResult](data)
 }
 
+// ReplyParams addresses a reply. Recipients default to the other side of the
+// conversation: the sender of a message you received, or the original
+// recipients of one you sent, so following up on your own unanswered email
+// reaches the right people instead of looping back to you. To overrides that;
+// CC and BCC add addresses, which is how a standing CC rides every reply.
 type ReplyParams struct {
 	TextBody    string               `json:"text_body,omitempty"`
 	HTMLBody    string               `json:"html_body,omitempty"`
+	To          []string             `json:"to,omitempty"`
+	CC          []string             `json:"cc,omitempty"`
+	BCC         []string             `json:"bcc,omitempty"`
 	Attachments []OutboundAttachment `json:"attachments,omitempty"`
 }
 
